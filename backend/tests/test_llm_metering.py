@@ -50,8 +50,14 @@ def test_successful_call_records_invocation():
     db = SessionLocal()
     try:
         wid = _mk_ws(db)
+        db.commit()
+    finally:
+        db.close()
+    db = SessionLocal()
+    try:
         with llm_metering.scope(workspace_id=wid, agent_slug="t"):
             llm.generate_json("s", "u", _Schema)
+        db.expire_all()
         n = db.scalar(sa.select(sa.func.count(LLMInvocation.id)).where(
             LLMInvocation.agent_slug == "t"))
         assert n == 1
@@ -86,6 +92,11 @@ def test_failed_call_records_failed_invocation():
     db = SessionLocal()
     try:
         wid = _mk_ws(db)
+        db.commit()
+    finally:
+        db.close()
+    db = SessionLocal()
+    try:
         with pytest.raises(RuntimeError):
             with llm_metering.scope(workspace_id=wid):
                 llm.generate_json("s", "u", _Schema)
@@ -117,6 +128,11 @@ def test_missing_token_metadata_recorded_as_zero():
     db = SessionLocal()
     try:
         wid = _mk_ws(db)
+        db.commit()
+    finally:
+        db.close()
+    db = SessionLocal()
+    try:
         with llm_metering.scope(workspace_id=wid):
             llm.generate_json("s", "u", _Schema)
         inv = db.scalar(sa.select(LLMInvocation).where(

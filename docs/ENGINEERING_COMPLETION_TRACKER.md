@@ -16,13 +16,18 @@ Pushed to origin/feat/workforce-completion; PR #1 stays open.
   output path, workflow_steps draft, research results) + adversarial tests
   coverage; residual-risk doc still needed.
 - WS7 LLM metering: usage endpoint added (GET /analytics/llm-usage).
-  `tests/test_llm_metering.py` CREATED (8 tests) but 5 FAILING —
-  test_successful/failed/missing-token (service-level) + 2 endpoint tests.
-  Patched to create real Workspace rows (FK on llm_invocations.workspace_id)
-  — still failing; next session must read actual traceback
-  (`pytest tests/test_llm_metering.py -x`) — likely scope()/own-session
-  commit or assertion mismatch, NOT necessarily FK anymore.
-  3 passing: budget_blocks_after_limit, concurrent_budget, auth-required.
+  `tests/test_llm_metering.py`: 5/8 PASS after fixing SQLite lock
+  (commit+close setup session before MeteredLLM's own-session write).
+  Passing: success/fail/missing-token records, budget limit, concurrency,
+  auth-required. FAILING (2): test_usage_endpoint_totals_and_isolation,
+  test_usage_endpoint_empty_and_validation — error is an anyio/httpx
+  transport-level exception inside TestClient (not an assertion); likely
+  endpoint raises during request (check `func.case` usage — SQLAlchemy 2
+  `case()` signature may need `else_` kwarg or `sa.case((cond,1),else_=0)`
+  already used; verify Query import conflict) — DEBUG: call endpoint via
+  `client.get` traceback or run `pytest ... --tb=long` and inspect app
+  exception; possibly `func.date()` unsupported grouping on SQLite or
+  response_model serialization. Fix analytics.py llm_usage accordingly.
 - WS6: untrusted_block wired in outreach/conversation_engine/manager_engine
   (remote commits); test_prompt_security.py exists (unit-level only).
   STILL TODO: adversarial path tests, SECURITY_AND_PROMPT_INJECTION.md.
