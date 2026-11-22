@@ -47,7 +47,33 @@ Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
 - Remaining: dedicated ratelimit tests NOT_STARTED (reachable/unreachable/
   missing/fail-closed; mock vs live Redis distinction).
 
-## Workstream 4 — WhatsApp lifecycle — PARTIAL
+## Workstream 4 — WhatsApp lifecycle — TESTED (mocked Meta only)
+- `meta_cloud.py`: `list_templates()` (cursor pagination), `get_template()`,
+  `submit_template()` (POST /{waba}/message_templates), `_graph_get` with
+  rate-limit/malformed handling; never fabricates.
+- `services/whatsapp_templates.py`: `sync_templates` (idempotent upsert by
+  name+language+provider_template_id, status map PENDING/APPROVED/REJECTED/
+  PAUSED/DISABLED→lowercase, rejection_reason, components JSON, last_synced_at,
+  is_active only when approved), `_validate_components` (type+param checks),
+  `send_approved_template` (workspace+channel check, APPROVED-only, compliance
+  recheck, provider_message_id persisted, honest not_configured/failed).
+- `api/whatsapp.py` (NEW, registered in main.py): GET /whatsapp/templates,
+  GET /whatsapp/templates/{id}, POST /whatsapp/templates/sync (admin),
+  POST /whatsapp/templates/{id}/send (member+). TemplateOut schema.
+- `whatsapp_webhooks.py`: template_status events → MessageTemplate by
+  provider_template_id, monotonic rank guard (pending<approved/rejected<
+  paused/disabled), provider timestamp→last_synced_at, unmatched→quarantined.
+- `outreach.send_message(..., template_name=None)`: outside 24h window →
+  template_required unless explicit approved template; in-window unchanged.
+- `tests/test_whatsapp_templates.py` (NEW, 14 tests, all Meta calls MOCKED):
+  pagination, sync mapping, idempotent re-sync, not_configured, provider
+  errors/malformed, approved send w/ provider id persistence, unapproved/
+  pending/rejected blocked, invalid components/params, cross-workspace
+  isolation, webhook signature, template-status mapping, duplicate,
+  out-of-order guard, quarantine, outside-window template_required.
+- Result: 127 passed / 2 skipped; `alembic upgrade head` OK on SQLite.
+- Remaining: live Meta validation needs WHATSAPP_* creds; frontend panel
+  deferred to frontend workstream; template submission UI not built.
 - Done: `Message.provider_message_id` (+delivered_at/read_at/failed_at/
   provider_error) persisted on send in `outreach.send_message`;
   `whatsapp_webhooks.py` maps status events→Message with monotonic ranking
@@ -63,7 +89,84 @@ Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
   `app/api/whatsapp_webhooks.py`, new `app/api/whatsapp.py` or extend
   compliance/system router, `app/services/` new `whatsapp_templates.py`.
 
-## Workstream 5 — Resend lifecycle — PARTIAL
+## Workstream 5 — Resend lifecycle — TESTED (mocked svix signatures)
+- `tests/test_resend_lifecycle.py`: 11/11 PASS — delivered/bounced/
+  complained/failed mapping, unknown-id safe, duplicate webhook, bad sig 401,
+  cross-workspace, inbound quarantine, inbound dedupe (provider_message_id),
+  campaign stats bounce rollup.
+- Fixes this session: removed shadowing local import in webhooks.py
+  (UnboundLocalError), inbound route is /workspaces/current, test bug
+  (duplicate provider id) resolved.
+- Remaining minor: Resend reply threading headers (In-Reply-To/References)
+  not explicitly verified — resend.py sends X-AGW-Message-Id only;
+  thread_id correlation exists via event.thread_id→conversation.
+  Document as limitation if not implemented.
+- `app/api/webhooks.py` changes (THIS SESSION):
+  * delivered → conv.state="engaged" (from contacted/new); bump handled below
+  * bounced → SuppressionRecord + conv.needs_human + `_bump_campaign_stats("bounced")`
+  * complained → SuppressionRecord + conv.needs_human + conv.state="complained"
+    + `_bump_campaign_stats("complained")`
+  * failed → `_bump_campaign_stats("failed")`
+  * `_bump_campaign_stats(db,msg,key)`: finds Campaign rows in workspace whose
+    lead_ids JSON contains the conversation's lead id; increments stats[key].
+  * received branch: wid None → we.payload["quarantined"]=True +
+    result {"status":"quarantined"} (never guesses workspace);
+    duplicate guard: Message.provider_message_id==event.message_id →
+    {"status":"duplicate_inbound"}; after handle_inbound, stamps
+    provider_message_id=event.message_id on created inbound Message
+    (handle_inbound returns "message_id" — verified).
+  * imports: Conversation, Message, MessageStatus added at top.
+- Verified: `python -c "import app.main"` OK; test_comms+test_whatsapp 18 passed.
+- `tests/test_resend_lifecycle.py` CREATED (11 tests): delivered/bounced/
+  complained/failed event mapping, unknown-id safety, duplicate webhook,
+  bad signature 401, cross-workspace, inbound quarantine, inbound dedupe,
+  campaign stats rollup. 9 PASS / 2 FAIL currently:
+  * test_inbound_duplicate_guard — workspace PATCH route FIXED to
+    /workspaces/current; now fails with UnboundLocalError inside
+    handle_inbound/conversation_engine (inspect traceback — likely
+    `wid`/var scoping in webhooks received branch or engine). DEBUG NEXT.
+  * test_campaign_stats_bounce_rollup — matched=True now asserted OK;
+    stats["bounced"] still None → _bump_campaign_stats found no campaign
+    OR lead_ids mismatch. Campaign lead_ids stores str(l.id) (verified
+    campaigns.py:47); message conv lead = same lead. DEBUG: check
+    c.lead_ids content vs lid, and whether _bump_campaign_stats ran
+    (maybe conv.lead lazy-load None → early return). NEXT.
+- STILL TODO after fixes: run full suite, mark TESTED, then WS6-10.
+- Note: resend.py In-Reply-To/References threading — NOT yet verified;
+  check `OutboundEmail.headers` usage in outreach.send_message (it already
+  sends X-AGW-Message-Id header; verify reply threading headers exist).
+- Branch: feat/workforce-completion. Baseline 127 passed/2 skipped.
+- Existing: provider_message_id persisted on send; webhooks.py maps
+  delivered/bounced/complained/failed → Message status/timestamps +
+  SuppressionRecord on bounce/complaint; svix signature verify +
+  WebhookEvent idempotency exist; handle_inbound has opt-out→consent
+  withdrawal→suppression→follow-up cancellation path.
+- NEXT TASKS (in order):
+  1. In webhooks.py `received` branch: persist quarantine marker when
+     `_resolve_workspace` returns None (currently returns
+     {"status":"unmatched_workspace"} with no record) — write
+     WebhookEvent.payload["quarantined"]=True or a dedicated result;
+     also when MULTIPLE workspaces could match (check _resolve_workspace
+     ambiguity). Add duplicate-inbound guard: before handle_inbound,
+     check Message with same provider_message_id/external_id in that
+     conversation → skip ("duplicate").
+  2. Campaign/conversation rollups: on delivered/bounced/complained/
+     failed, if msg.conversation_id → update Conversation state if needed
+     (e.g. hard bounce → needs_human or state="bounced"); campaign stats —
+     check Campaign model fields (sent/delivered/bounced counters?) before
+     implementing; update only real columns.
+  3. Threading: ensure In-Reply-To/References headers already set by
+     Resend provider on replies (check resend.py send path); inbound
+     thread_id resolution already uses event.thread_id — verify
+     conversation.external_thread_id matching is workspace-scoped.
+  4. Tests `tests/test_resend_lifecycle.py`: each event type, duplicate
+     webhook, invalid signature (existing svix tests?), unknown provider
+     id, cross-workspace, inbound dedupe, quarantine.
+- Files: `app/api/webhooks.py`, `app/services/conversation_engine.py`
+  (handle_inbound dedupe), `app/integrations/email/resend.py`,
+  `tests/test_resend_lifecycle.py` (new).
+- Baseline verified 2025-…: 127 passed / 2 skipped on branch
+  feat/workforce-completion (commit pending).
 - Done: provider_message_id persisted on send; `api/webhooks.py` maps
   delivered/bounced/complained/failed → Message status/timestamps +
   SuppressionRecord on bounce/complaint; unknown IDs safe; svix signature

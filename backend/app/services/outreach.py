@@ -30,7 +30,7 @@ from app.models import (
 
     Conversation, Lead, LeadStage, Message, MessageDirection, MessageStatus,
 
-    RiskLevel,
+    RiskLevel, MessageTemplate,
 
 )
 
@@ -237,7 +237,8 @@ def create_outbound_draft(db: Session, wid: uuid.UUID, conv: Conversation,
 
 
 
-def send_message(db: Session, wid: uuid.UUID, msg: Message) -> dict:
+def send_message(db: Session, wid: uuid.UUID, msg: Message,
+                 template_name: str | None = None) -> dict:
 
     """Send an approved outbound message. Re-checks compliance immediately."""
 
@@ -301,11 +302,44 @@ def send_message(db: Session, wid: uuid.UUID, msg: Message) -> dict:
 
         if not within:
 
-            msg.status = MessageStatus.failed
-
+            # Outside the 24h window: only an explicitly selected APPROVED
+            # template may be sent. Free-form stays blocked; no auto-substitution.
+            from app.services import whatsapp_templates as wt
+            if not template_name:
+                msg.status = MessageStatus.failed
+                db.commit()
+                return {"sent": False, "status": "template_required",
+                        "reason": "outside 24h customer-service window - "
+                                  "an approved template is required"}
+            tpl = db.scalar(select(MessageTemplate).where(
+                MessageTemplate.workspace_id == wid,
+                MessageTemplate.channel == Channel.whatsapp,
+                MessageTemplate.name == template_name))
+            if tpl is None or lead is None:
+                msg.status = MessageStatus.failed
+                db.commit()
+                return {"sent": False, "status": "template_required",
+                        "reason": f"template '{template_name}' not found"}
+            try:
+                tres = wt.send_approved_template(
+                    db, wid, lead=lead, to_phone=value or "",
+                    template=tpl, conv=conv)
+            except wt.TemplateError as exc:
+                msg.status = MessageStatus.failed
+                db.commit()
+                return {"sent": False, "status": "failed", "reason": str(exc)[:300]}
+            if not tres.get("sent"):
+                msg.status = MessageStatus.failed
+                db.commit()
+                return {"sent": False,
+                        "status": tres.get("status", "failed"),
+                        "reason": tres.get("reason", "")[:300]}
+            msg.provider_message_id = tres.get("provider_message_id")
+            msg.status = MessageStatus.sent
+            msg.sent_at = _now()
             db.commit()
-
-            return {"sent": False, "reason": "outside 24h customer-service window - approved template required"}
+            return {"sent": True, "message_id": str(msg.id),
+                    "via": "template", "template": template_name}
 
         try:
 
