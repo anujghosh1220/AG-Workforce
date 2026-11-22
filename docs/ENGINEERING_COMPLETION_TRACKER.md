@@ -21,7 +21,7 @@ Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
 | 7 | LLM metering + budgets | TESTED | `MeteredLLM`+`LLMInvocation`+atomic budget; `GET /analytics/llm-usage`; 8/8 `test_llm_metering.py` |
 | 8 | Frontend ops panels | TESTED | `Operations.tsx` (LLM usage, workers, WA templates, integrations); tsc/build/lint clean |
 | 9 | Documentation | TESTED | ARCHITECTURE/INTEGRATIONS/DEPLOYMENT/ENVIRONMENT_VARIABLES/TESTING/KNOWN_LIMITATIONS + SECURITY_AND_PROMPT_INJECTION + README rewritten |
-| 10 | Final verification | IN_PROGRESS | pytest 158/2 OK; alembic OK; tsc/build/lint OK; PG-specific tests need `AGW_TEST_PG_URL` |
+| 10 | Final verification | TESTED (locally) | pytest 158/2, alembic upgrade+check clean (new head `b2c3d4e5f6a7`), tsc/build/lint clean; PG/Redis/live-provider runs remain BLOCKED on credentials |
 
 ## Per-workstream detail
 
@@ -94,11 +94,22 @@ Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
   TESTING, KNOWN_LIMITATIONS, SECURITY_AND_PROMPT_INJECTION.
 - README rewritten (was stale "Phase 1").
 
-### WS10 — Final verification — IN_PROGRESS
-- Done: pytest 158/2, alembic upgrade head (SQLite), tsc -b, npm build,
-  oxlint 0 errors.
-- Outstanding: `AGW_TEST_PG_URL` PostgreSQL run; live provider smoke tests
-  (need credentials); final git hygiene review.
+### WS10 — Final verification — TESTED (locally verifiable scope)
+- `pytest tests -q`: **158 passed, 2 skipped** (SQLite).
+- `alembic current`/`upgrade head`/`check`: head `b2c3d4e5f6a7`; `check`
+  initially flagged index-name drift (`ix_messages_provider_id` vs model's
+  `ix_messages_provider_message_id`) → fixed via new additive migration
+  `b2c3d4e5f6a7_phase8_9_index_name_alignment`; `check` now reports no drift.
+- `npx tsc -b` clean; `npm run lint` 0 errors; `npm run build` OK
+  (chunk-size warning only, pre-existing).
+- Git hygiene: `git diff --check` clean; no `.env`/`*.db`/secret files
+  tracked; 12 commits ahead of `main`, merge-base `898b0eb`.
+- **BLOCKED (infrastructure):** `AGW_TEST_PG_URL` PostgreSQL run, live
+  Redis, live Meta/Resend/LLM/Calendar smoke tests — all need real
+  credentials/infra; documented in KNOWN_LIMITATIONS.md.
+- **PR #1:** GitHub reported `mergeable:false` despite 0 commits behind;
+  local merge-base is the root commit and no conflicting paths exist —
+  discrepancy likely stale GitHub computation; left unmerged per rules.
 
 ## History (condensed)
 - Remote commits `382096d`/`58179ad` wired prompt_security + workspace LLM
