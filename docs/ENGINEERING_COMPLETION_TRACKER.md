@@ -24,9 +24,15 @@ Pushed to origin/feat/workforce-completion; PR #1 stays open.
   concurrent budget (4 threads → exactly 1 wins), endpoint totals/
   by_model/by_agent/daily, workspace isolation, empty state, days
   validation (422), auth required. GET /analytics/llm-usage verified.
-- WS6: untrusted_block wired in outreach/conversation_engine/manager_engine
-  (remote commits); test_prompt_security.py exists (unit-level only).
-  STILL TODO: adversarial path tests, SECURITY_AND_PROMPT_INJECTION.md.
+- WS6 prompt security: TESTED — `untrusted_block` verified wired in
+  outreach (intro+reply drafts), conversation_engine (inbound analysis),
+  manager_engine (evidence). `tests/test_prompt_adversarial.py` 7/7 PASS:
+  real-path injection wrapping (inbound msg, lead facts), delimiter-escape
+  neutralization, oversized truncation, suppression/opt-out/cross-workspace
+  enforcement independent of prompts. `docs/SECURITY_AND_PROMPT_INJECTION.md`
+  written (threat model, controls, residual risks). Remaining: website_
+  enricher output path uses untrusted_block downstream via lead facts —
+  verify research-result prompts specifically if time permits.
 - WS8 frontend panels: NOT_STARTED.
 - WS9 docs: PARTIAL (.env.example only).
 - WS10 verification: pytest 143/2 OK; alembic upgrade head OK (SQLite);
