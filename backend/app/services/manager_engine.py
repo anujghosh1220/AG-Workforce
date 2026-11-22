@@ -24,7 +24,7 @@ from app.models import (
     ResearchJobStatus, ResearchResult, ResearchResultStatus, SalesIssue,
     Task, TaskPriority, TaskStatus, AnalysisRun, AnalysisRunStatus,
 )
-from app.services import manager_metrics
+from app.services import manager_metrics, prompt_security
 from app.services.helpers import log_activity, notify_workspace
 
 
@@ -500,11 +500,15 @@ def generate_insights(db: Session, wid: uuid.UUID) -> dict:
                 "You are the Sales Manager of an AI sales workforce. Analyze "
                 "the following REAL aggregated metrics. Cite only the numbers "
                 "provided. Distinguish observations from hypotheses. If data is "
-                "insufficient, say so in data_gaps. Never invent metrics.\n\n"
-                f"METRICS:\n{_trim(evidence)}")
-            out = llm.generate_json(
-                "You are a sales operations analyst. Be concise, evidence-based, "
-                "and honest about uncertainty.", user, Insight)
+                "insufficient, say so in data_gaps. Never invent metrics.\\n\\n"
+                "METRICS:\\n"
+                + prompt_security.untrusted_block("AGGREGATED_METRICS", _trim(evidence)))
+            from app.services import llm_metering
+            with llm_metering.scope(workspace_id=wid):
+                out = llm.generate_json(
+                    prompt_security.UNTRUSTED_NOTICE + "\\n\\n"
+                    "You are a sales operations analyst. Be concise, evidence-based, "
+                    "and honest about uncertainty.", user, Insight)                "and honest about uncertainty.", user, Insight)
             return {"provider": llm.name, "observations": out.observations,
                     "hypotheses": out.hypotheses,
                     "recommendations": out.recommendations,

@@ -74,17 +74,18 @@ Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
   duplicate inbound message guard (check provider_message_id/external_id
   before handle_inbound); tests for all event types.
 
-## Workstream 6 — Prompt-injection security — PARTIAL (module exists, NOT WIRED)
-- `app/services/prompt_security.py` created: `sanitize_untrusted`,
-  `scan_injection` (heuristic patterns), `untrusted_block(label, content)`
-  with delimiter neutralization + 12k char cap, `UNTRUSTED_NOTICE`.
-- NOT_STARTED: apply `untrusted_block` in `outreach.generate_intro_draft`,
-  `outreach.generate_reply_draft`, `conversation_engine.analyze_inbound`,
-  `manager_engine.generate_insights`, `workflow_steps.exec_draft_reply`;
-  add `UNTRUSTED_NOTICE` to system prompts; adversarial tests; residual-risk
-  doc section.
-- Capability registry (`capabilities.py`) and pydantic output validation
-  already enforce structure; compliance re-checks already immediate pre-send.
+## Workstream 6 — Prompt-injection security — IMPLEMENTED (tests pending)
+- External prospect facts, operator-supplied draft instructions, conversation
+  history/inbound text, approved knowledge, and aggregated manager metrics are
+  wrapped with `untrusted_block` before insertion into LLM user prompts.
+  Matching system prompts include `UNTRUSTED_NOTICE`; delimiter neutralization
+  and size caps remain active.
+- Direct outreach, inbound-analysis and manager-insight LLM calls now use
+  `llm_metering.scope(workspace_id=...)` for workspace attribution.
+- Remaining: adversarial tests and residual-risk documentation. Workflow reply
+  drafting delegates to the secured `outreach.generate_reply_draft` path.
+- Scanner remains advisory. Approval gates, capability checks and immediate
+  pre-send compliance checks remain the enforcement layer.
 
 ## Workstream 7 — LLM metering — IMPLEMENTED (core) / PARTIAL wiring
 - `app/services/llm_metering.py`: `LLMInvocation` model (workspace_id,
