@@ -491,24 +491,26 @@ def generate_insights(db: Session, wid: uuid.UUID) -> dict:
     if llm is not None:
         try:
             from pydantic import BaseModel, Field
+
             class Insight(BaseModel):
                 observations: list[str] = Field(default_factory=list)
                 hypotheses: list[str] = Field(default_factory=list)
                 recommendations: list[str] = Field(default_factory=list)
                 data_gaps: list[str] = Field(default_factory=list)
+
             user = (
-                "You are the Sales Manager of an AI sales workforce. Analyze "
-                "the following REAL aggregated metrics. Cite only the numbers "
-                "provided. Distinguish observations from hypotheses. If data is "
-                "insufficient, say so in data_gaps. Never invent metrics.\\n\\n"
-                "METRICS:\\n"
-                + prompt_security.untrusted_block("AGGREGATED_METRICS", _trim(evidence)))
+                "Analyze the following REAL aggregated metrics. Cite only the "
+                "numbers provided. Distinguish observations from hypotheses. "
+                "If data is insufficient, say so in data_gaps. Never invent metrics.\n\n"
+                "METRICS:\n"
+                + prompt_security.untrusted_block("AGGREGATED_METRICS", _trim(evidence))
+            )
             from app.services import llm_metering
             with llm_metering.scope(workspace_id=wid):
                 out = llm.generate_json(
-                    prompt_security.UNTRUSTED_NOTICE + "\\n\\n"
+                    prompt_security.UNTRUSTED_NOTICE + "\n\n"
                     "You are a sales operations analyst. Be concise, evidence-based, "
-                    "and honest about uncertainty.", user, Insight)                "and honest about uncertainty.", user, Insight)
+                    "and honest about uncertainty.", user, Insight)
             return {"provider": llm.name, "observations": out.observations,
                     "hypotheses": out.hypotheses,
                     "recommendations": out.recommendations,
@@ -516,7 +518,6 @@ def generate_insights(db: Session, wid: uuid.UUID) -> dict:
         except Exception:
             pass
 
-    # heuristic fallback — deterministic, honest
     obs, hyp, rec = [], [], []
     stages = {s["stage"]: s["count"] for s in fun["stages"]}
     if stages.get("discovered", 0) >= 20:
@@ -537,13 +538,12 @@ def generate_insights(db: Session, wid: uuid.UUID) -> dict:
     if not stages.get("discovered"):
         obs.append("No leads yet — the funnel is empty; start lead research.")
         rec.append("Run an initial Lead Research job.")
-    gaps = [] if stages.get("discovered") else ["No lead data yet — all "
-                                              "downstream metrics unavailable."]
+    gaps = [] if stages.get("discovered") else [
+        "No lead data yet — all downstream metrics unavailable."]
     return {"provider": "heuristic",
             "observations": obs or ["Insufficient data for observations."],
             "hypotheses": hyp, "recommendations": rec,
             "data_gaps": gaps, "evidence": evidence}
-
 
 def _get_llm():
     try:
