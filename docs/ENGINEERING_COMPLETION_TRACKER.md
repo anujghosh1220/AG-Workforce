@@ -16,8 +16,10 @@ Pushed to origin/feat/workforce-completion; PR #1 stays open.
   output path, workflow_steps draft, research results) + adversarial tests
   coverage; residual-risk doc still needed.
 - WS7 LLM metering: core done; remote added workspace attribution wiring —
-  verify scope() coverage in outreach/conversation_engine/manager_engine,
-  usage endpoint + aggregation endpoint + tests still TODO.
+  usage endpoint ADDED this session: GET /api/v1/analytics/llm-usage
+  (?days=1..365) returns calls/failed/tokens/by_model/by_agent/daily for
+  caller's workspace only. STILL TODO: metering unit tests (success/fail/
+  retry/concurrency/budget/exhaustion), cost-estimate config if desired.
 - WS8 frontend panels: NOT_STARTED.
 - WS9 docs: PARTIAL (.env.example only).
 - WS10 verification: pytest 143/2 OK; alembic upgrade head OK (SQLite);
