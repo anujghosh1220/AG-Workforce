@@ -3,7 +3,7 @@
 Mission: finish all outstanding Phase 8.7–8.9 items. Resume from this file.
 Branch: `feat/workforce-completion` (PR #1 open, never merge to `main`).
 Latest verified baseline: **158 backend tests passed, 2 skipped** (SQLite),
-`alembic upgrade head` → `a1b2c3d4e5f6 (head)`, frontend `tsc -b` clean,
+`alembic upgrade head` → `b2c3d4e5f6a7 (head)`, frontend `tsc -b` clean,
 `npm run build` OK, `npm run lint` 0 errors.
 
 Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
@@ -103,7 +103,7 @@ Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
 - `npx tsc -b` clean; `npm run lint` 0 errors; `npm run build` OK
   (chunk-size warning only, pre-existing).
 - Git hygiene: `git diff --check` clean; no `.env`/`*.db`/secret files
-  tracked; 12 commits ahead of `main`, merge-base `898b0eb`.
+  tracked; 13 commits ahead of `main`, merge-base `898b0eb`.
 - **BLOCKED (infrastructure):** `AGW_TEST_PG_URL` PostgreSQL run, live
   Redis, live Meta/Resend/LLM/Calendar smoke tests — all need real
   credentials/infra; documented in KNOWN_LIMITATIONS.md.
