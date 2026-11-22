@@ -1,10 +1,8 @@
 # AG Workforce — Engineering Completion Tracker
 
 Mission: finish all outstanding Phase 8.7–8.9 items. Resume from this file.
-Baseline: 143 backend tests passed, 2 skipped (SQLite) — verified post-rebase
-on feat/workforce-completion @ 8fddec7 (includes remote commits 382096d +
-58179ad which wired prompt_security.untrusted_block into conversation_engine,
-manager_engine, outreach + added tests/test_prompt_security.py).
+Baseline: 158 backend tests passed, 2 skipped (SQLite) — verified on
+feat/workforce-completion @ 179cd3f.
 Pushed to origin/feat/workforce-completion; PR #1 stays open.
 
 ## Session state (latest)
