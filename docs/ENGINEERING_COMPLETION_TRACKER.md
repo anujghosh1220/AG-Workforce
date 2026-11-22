@@ -1,7 +1,27 @@
 # AG Workforce — Engineering Completion Tracker
 
 Mission: finish all outstanding Phase 8.7–8.9 items. Resume from this file.
-Baseline before this effort: 113 backend tests passed, 2 skipped (SQLite).
+Baseline: 143 backend tests passed, 2 skipped (SQLite) — verified post-rebase
+on feat/workforce-completion @ 8fddec7 (includes remote commits 382096d +
+58179ad which wired prompt_security.untrusted_block into conversation_engine,
+manager_engine, outreach + added tests/test_prompt_security.py).
+Pushed to origin/feat/workforce-completion; PR #1 stays open.
+
+## Session state (latest)
+- WS4 WhatsApp: TESTED (14 mocked tests).
+- WS5 Resend: TESTED (11 mocked tests; inbound quarantine+dedupe,
+  lifecycle rollups, campaign stats).
+- WS6 prompt security: PARTIALLY DONE by remote commits — untrusted_block
+  wired in 3 services; verify remaining entry points (website_enricher
+  output path, workflow_steps draft, research results) + adversarial tests
+  coverage; residual-risk doc still needed.
+- WS7 LLM metering: core done; remote added workspace attribution wiring —
+  verify scope() coverage in outreach/conversation_engine/manager_engine,
+  usage endpoint + aggregation endpoint + tests still TODO.
+- WS8 frontend panels: NOT_STARTED.
+- WS9 docs: PARTIAL (.env.example only).
+- WS10 verification: pytest 143/2 OK; alembic upgrade head OK (SQLite);
+  tsc/build NOT_RUN.
 
 Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
 
