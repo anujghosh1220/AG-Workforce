@@ -15,19 +15,15 @@ Pushed to origin/feat/workforce-completion; PR #1 stays open.
   wired in 3 services; verify remaining entry points (website_enricher
   output path, workflow_steps draft, research results) + adversarial tests
   coverage; residual-risk doc still needed.
-- WS7 LLM metering: usage endpoint added (GET /analytics/llm-usage).
-  `tests/test_llm_metering.py`: 5/8 PASS after fixing SQLite lock
-  (commit+close setup session before MeteredLLM's own-session write).
-  Passing: success/fail/missing-token records, budget limit, concurrency,
-  auth-required. FAILING (2): test_usage_endpoint_totals_and_isolation,
-  test_usage_endpoint_empty_and_validation — error is an anyio/httpx
-  transport-level exception inside TestClient (not an assertion); likely
-  endpoint raises during request (check `func.case` usage — SQLAlchemy 2
-  `case()` signature may need `else_` kwarg or `sa.case((cond,1),else_=0)`
-  already used; verify Query import conflict) — DEBUG: call endpoint via
-  `client.get` traceback or run `pytest ... --tb=long` and inspect app
-  exception; possibly `func.date()` unsupported grouping on SQLite or
-  response_model serialization. Fix analytics.py llm_usage accordingly.
+- WS7 LLM metering: TESTED — `tests/test_llm_metering.py` 8/8 PASS.
+  Root cause of endpoint failures: `func.case(...)` rendered as SQL
+  function `case()` which SQLite lacks → 500. Fixed by importing
+  `case` from sqlalchemy in analytics.py:llm_usage. Also fixed test-side
+  SQLite locking (commit setup session before MeteredLLM's own-session
+  write). Coverage: success/fail/missing-token records, budget limit,
+  concurrent budget (4 threads → exactly 1 wins), endpoint totals/
+  by_model/by_agent/daily, workspace isolation, empty state, days
+  validation (422), auth required. GET /analytics/llm-usage verified.
 - WS6: untrusted_block wired in outreach/conversation_engine/manager_engine
   (remote commits); test_prompt_security.py exists (unit-level only).
   STILL TODO: adversarial path tests, SECURITY_AND_PROMPT_INJECTION.md.

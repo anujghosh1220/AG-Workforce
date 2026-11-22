@@ -252,7 +252,7 @@ def llm_usage(days: int = Query(30, ge=1, le=365),
     """Actual provider-call metering for the caller's workspace.
     Never accepts a workspace id from the client."""
     from datetime import timedelta
-    from sqlalchemy import func as _f
+    from sqlalchemy import case as _case, func as _f
     from app.models import LLMInvocation
     from app.services import llm_metering
 
@@ -269,8 +269,8 @@ def llm_usage(days: int = Query(30, ge=1, le=365),
         _f.count(LLMInvocation.id),
         _f.coalesce(_f.sum(LLMInvocation.tokens_prompt), 0),
         _f.coalesce(_f.sum(LLMInvocation.tokens_completion), 0),
-        _f.coalesce(_f.sum(_f.case((LLMInvocation.status == "failed", 1),
-                                    else_=0)), 0))
+        _f.coalesce(_f.sum(_case((LLMInvocation.status == "failed", 1),
+                                       else_=0)), 0))
     # by provider/model
     by_model = db.execute(
         select(LLMInvocation.provider, LLMInvocation.model,
