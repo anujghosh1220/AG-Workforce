@@ -31,7 +31,16 @@ Pushed to origin/feat/workforce-completion; PR #1 stays open.
   written (threat model, controls, residual risks). Remaining: website_
   enricher output path uses untrusted_block downstream via lead facts —
   verify research-result prompts specifically if time permits.
-- WS8 frontend panels: NOT_STARTED.
+- WS8 frontend ops panels: TESTED — `src/pages/Operations.tsx` (new route
+  /operations + nav item). Panels: LLM Usage (calls/failed/tokens/by_model/
+  by_agent/daily chart, 7/30/90d selector, 60s poll), Worker Health (from
+  /system/status workers block, 30s poll, stale/fail badges), WhatsApp
+  Templates (list + approval status + rejection reason + last sync),
+  Integrations (Resend/LLM/calendar/env states). Loading/error(403-aware)/
+  empty states throughout; no fabricated data. Also fixed pre-existing
+  rules-of-hooks violation in Campaigns.tsx (act() callback → 3 explicit
+  useMutation). VERIFIED: `npx tsc -b` clean, `npm run build` OK,
+  `npm run lint` 0 errors (was 1 pre-existing error, now fixed).
 - WS9 docs: PARTIAL (.env.example only).
 - WS10 verification: pytest 143/2 OK; alembic upgrade head OK (SQLite);
   tsc/build NOT_RUN.

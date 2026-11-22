@@ -24,13 +24,21 @@ export default function Campaigns() {
     mutationFn: () => api.post<Campaign>('/campaigns', { name, lead_ids: [...selected], channel: 'email', instructions }),
     onSuccess: (c) => { setActiveId(c.id); setName(''); setSelected(new Set()); qc.invalidateQueries({ queryKey: ['campaigns'] }) },
   })
-  const act = (path: string) => useMutation({
-    mutationFn: () => api.post(`/campaigns/${activeId}${path}`, path === '/authorize' ? { confirm: true } : {}),
+  const actOpts = {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['campaigns'] }); qc.invalidateQueries({ queryKey: ['eligibility', activeId] }) },
+  }
+  const generate = useMutation({
+    mutationFn: () => api.post(`/campaigns/${activeId}/generate`, {}),
+    ...actOpts,
   })
-  const generate = act('/generate')
-  const authorize = act('/authorize')
-  const send = act('/send') as ReturnType<typeof useMutation<{status:string;stats:Record<string,number>}, Error, void>>
+  const authorize = useMutation({
+    mutationFn: () => api.post(`/campaigns/${activeId}/authorize`, { confirm: true }),
+    ...actOpts,
+  })
+  const send = useMutation({
+    mutationFn: () => api.post<{status:string;stats:Record<string,number>}>(`/campaigns/${activeId}/send`, {}),
+    ...actOpts,
+  })
 
   const eligibleLeads = (leads.data?.items ?? []).filter(l => l.email || l.phone)
   const active = campaigns.data?.items.find(c => c.id === activeId)

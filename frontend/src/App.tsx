@@ -11,6 +11,7 @@ import Conversations from './pages/Conversations'
 import CalendarPage from './pages/Calendar'
 import Manager from './pages/Manager'
 import Workforce from './pages/Workforce'
+import Operations from './pages/Operations'
 import Tasks from './pages/Tasks'
 import Research from './pages/Research'
 import Campaigns from './pages/Campaigns'
@@ -50,6 +51,7 @@ export default function App() {
         <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/manager" element={<Manager />} />
         <Route path="/workforce" element={<Workforce />} />
+        <Route path="/operations" element={<Operations />} />
         <Route path="/tasks" element={<Tasks />} />
           <Route path="/research" element={<Research />} />
           <Route path="/campaigns" element={<Campaigns />} />
