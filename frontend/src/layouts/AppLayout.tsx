@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart3, Bell, Bot, Briefcase, Calendar, CalendarCheck, KanbanSquare, LayoutDashboard, LogOut, Network,
-  MessageSquare, Settings2, CheckSquare, Search, Megaphone, Users, X,
+  MessageSquare, Settings2, CheckSquare, Search, Megaphone, Users, X, Activity,
 } from 'lucide-react'
 import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
@@ -23,6 +23,7 @@ const NAV = [
   { to: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { to: '/approvals', label: 'Approvals', icon: CalendarCheck },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/operations', label: 'Operations', icon: Activity },
   { to: '/knowledge', label: 'Product Knowledge', icon: Settings2 },
 ]
 

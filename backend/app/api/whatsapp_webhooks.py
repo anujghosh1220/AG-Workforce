@@ -111,6 +111,52 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
             else:
                 results.append({"event_id": ev.event_id, "status": "receipt",
                                 "receipt": ev.status, "matched": False})
+        elif ev.kind == "template_status" and ev.raw:
+            # Meta message_template_status_update -> sync local template
+            raw = ev.raw or {}
+            tpl_id = str(raw.get("message_template_id") or "")
+            new_status = str(raw.get("event") or "").upper()
+            reason = raw.get("reason") or None
+            ts = raw.get("timestamp")
+            from app.models import MessageTemplate
+            q = select(MessageTemplate).where(
+                MessageTemplate.channel == Channel.whatsapp)
+            if tpl_id:
+                q = q.where(MessageTemplate.provider_template_id == tpl_id)
+            else:
+                q = q.where(MessageTemplate.name == str(raw.get("message_template_name") or ""))
+            cands = db.scalars(q).all()
+            if len(cands) == 1:
+                t = cands[0]
+                smap = {"APPROVED": "approved", "REJECTED": "rejected",
+                        "PENDING": "pending", "PAUSED": "paused",
+                        "DISABLED": "disabled"}
+                internal = smap.get(new_status)
+                if internal:
+                    # out-of-order protection: Meta statuses are roughly
+                    # monotonic in review flow; never let an older event
+                    # revert a newer terminal/provider-confirmed state.
+                    rank = {"pending": 0, "approved": 1, "rejected": 1,
+                            "paused": 2, "disabled": 2}
+                    if rank.get(internal, 0) >= rank.get(t.provider_status, 0):
+                        t.provider_status = internal
+                        t.is_active = internal == "approved"
+                        if reason:
+                            t.rejection_reason = str(reason)[:1000]
+                        if ts:
+                            try:
+                                t.last_synced_at = datetime.fromtimestamp(
+                                    int(ts), tz=timezone.utc)
+                            except Exception:
+                                t.last_synced_at = datetime.now(timezone.utc)
+                results.append({"event_id": ev.event_id, "status": "template_update",
+                                "matched": True, "new_status": internal})
+            else:
+                # unmatched or ambiguous -> quarantine, never guess workspace
+                results.append({"event_id": ev.event_id,
+                                "status": "quarantined",
+                                "reason": "template_not_uniquely_matched",
+                                "candidates": len(cands)})
         else:
             results.append({"event_id": ev.event_id, "status": "ignored"})
         we.processed = True

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -240,3 +240,72 @@ def overview(auth: AuthContext = Depends(get_current_auth), db: Session = Depend
         demo_attendance_rate=_rate(demos_completed, demo_held),
         demo_to_customer_rate=_rate(demo_won, demo_leads_total),
     )
+
+
+# ------------------------------------------------------------ LLM usage (WS7)
+
+
+@router.get("/llm-usage")
+def llm_usage(days: int = Query(30, ge=1, le=365),
+              auth: AuthContext = Depends(get_current_auth),
+              db: Session = Depends(get_db)):
+    """Actual provider-call metering for the caller's workspace.
+    Never accepts a workspace id from the client."""
+    from datetime import timedelta
+    from sqlalchemy import case as _case, func as _f
+    from app.models import LLMInvocation
+    from app.services import llm_metering
+
+    wid = auth.workspace.id
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    def _agg(*cols):
+        return db.execute(
+            select(*cols).where(
+                LLMInvocation.workspace_id == wid,
+                LLMInvocation.created_at >= since)).one()
+
+    total, tp, tc, failed = _agg(
+        _f.count(LLMInvocation.id),
+        _f.coalesce(_f.sum(LLMInvocation.tokens_prompt), 0),
+        _f.coalesce(_f.sum(LLMInvocation.tokens_completion), 0),
+        _f.coalesce(_f.sum(_case((LLMInvocation.status == "failed", 1),
+                                       else_=0)), 0))
+    # by provider/model
+    by_model = db.execute(
+        select(LLMInvocation.provider, LLMInvocation.model,
+               _f.count(LLMInvocation.id),
+               _f.coalesce(_f.sum(LLMInvocation.tokens_prompt), 0),
+               _f.coalesce(_f.sum(LLMInvocation.tokens_completion), 0))
+        .where(LLMInvocation.workspace_id == wid,
+               LLMInvocation.created_at >= since)
+        .group_by(LLMInvocation.provider, LLMInvocation.model)).all()
+    by_agent = db.execute(
+        select(LLMInvocation.agent_slug,
+               _f.count(LLMInvocation.id))
+        .where(LLMInvocation.workspace_id == wid,
+               LLMInvocation.created_at >= since)
+        .group_by(LLMInvocation.agent_slug)).all()
+    daily = db.execute(
+        select(_f.date(LLMInvocation.created_at),
+               _f.count(LLMInvocation.id))
+        .where(LLMInvocation.workspace_id == wid,
+               LLMInvocation.created_at >= since)
+        .group_by(_f.date(LLMInvocation.created_at))
+        .order_by(_f.date(LLMInvocation.created_at))).all()
+    return {
+        "workspace_id": str(wid),
+        "window_days": days,
+        "calls": int(total),
+        "failed_calls": int(failed),
+        "tokens_prompt": int(tp),
+        "tokens_completion": int(tc),
+        "note": "token counts are provider-reported; 0 means the provider "
+                "did not return usage metadata",
+        "by_model": [{"provider": p, "model": m, "calls": int(c),
+                      "tokens_prompt": int(a), "tokens_completion": int(b)}
+                     for p, m, c, a, b in by_model],
+        "by_agent": [{"agent": s or "unattributed", "calls": int(c)}
+                     for s, c in by_agent],
+        "daily": [{"date": str(d), "calls": int(c)} for d, c in daily],
+    }

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.integrations.llm.base import get_llm
 from app.integrations.llm.heuristic import analyze as heuristic_analyze
+from app.services import prompt_security
 from app.models import (
     ActorType, Agent, AssigneeType, Channel, ChannelConsent, ConsentStatus,
     Conversation, FollowUp, FollowUpStatus, Lead, LeadStage, Message,
@@ -98,6 +99,7 @@ def analyze_inbound(db: Session, wid: uuid.UUID, conv: Conversation,
     if llm is not None:
         try:
             from pydantic import BaseModel, Field
+
             class Analysis(BaseModel):
                 intent: str = Field(description="greeting|question|objection|buying_signal|opt_out|human_request|other")
                 conversation_state: str
@@ -105,22 +107,27 @@ def analyze_inbound(db: Session, wid: uuid.UUID, conv: Conversation,
                 next_action: str
                 needs_human: bool = False
                 confidence: str = "medium"
+
             user = (
-                f"Conversation so far:\n{history or '(new)'}\n\n"
-                f"New prospect message:\n{body}\n\n"
-                "Classify the message using only the allowed intents."
+                "Conversation so far:\n"
+                + prompt_security.untrusted_block("CONVERSATION_HISTORY", history or "(new)")
+                + "\n\nNew prospect message:\n"
+                + prompt_security.untrusted_block("INBOUND_MESSAGE", body)
+                + "\n\nClassify the message using only the allowed intents."
             )
-            out = llm.generate_json(
-                "You are a sales conversation analyst for a cafe management software company. "
-                "Classify prospect messages accurately. Never invent facts.",
-                user, Analysis)
+            from app.services import llm_metering
+            with llm_metering.scope(workspace_id=wid):
+                out = llm.generate_json(
+                    prompt_security.UNTRUSTED_NOTICE + "\n\n"
+                    "You are a sales conversation analyst for a cafe management software company. "
+                    "Classify prospect messages accurately. Never invent facts.",
+                    user, Analysis)
             d = out.model_dump()
             d["provider"] = llm.name
             return d
         except Exception:
             pass
     return heuristic_analyze(body)
-
 
 def handle_inbound(db: Session, wid: uuid.UUID, *, channel: Channel,
                    from_address: str, to_address: str | None,

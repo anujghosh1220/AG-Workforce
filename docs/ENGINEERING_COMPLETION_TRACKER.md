@@ -1,142 +1,118 @@
 # AG Workforce — Engineering Completion Tracker
 
 Mission: finish all outstanding Phase 8.7–8.9 items. Resume from this file.
-Baseline before this effort: 113 backend tests passed, 2 skipped (SQLite).
+Branch: `feat/workforce-completion` (PR #1 open, never merge to `main`).
+Latest verified baseline: **158 backend tests passed, 2 skipped** (SQLite),
+`alembic upgrade head` → `b2c3d4e5f6a7 (head)`, frontend `tsc -b` clean,
+`npm run build` OK, `npm run lint` 0 errors.
 
 Status legend: NOT_STARTED / IN_PROGRESS / IMPLEMENTED / TESTED / BLOCKED
 
-## Workstream 1 — Appointment DB concurrency — IMPLEMENTED (PG live verify BLOCKED)
-- Files: `backend/app/models/__init__.py` (Appointment.block_start/block_end),
-  `backend/app/services/appointments.py` (`_block_window`, `_sync_block` wired
-  into create_appointment, book_slot, apply_reschedule),
-  `backend/app/main.py` (IntegrityError→409 handler),
-  `backend/migrations/versions/a1b2c3d4e5f6_phase8_8_concurrency_lifecycle_.py`
-  (columns + backfill + PG-only `excl_appointment_overlap` EXCLUDE USING gist
-  with btree_gist, tstzrange '[)', partial WHERE on blocking statuses;
-  `CREATE EXTENSION IF NOT EXISTS btree_gist`).
-- Buffer semantics match `availability.is_slot_available`: occupied interval
-  = [start-buffer, end+buffer).
-- Remaining: run `alembic upgrade head`; live PG concurrency test needs
-  `AGW_TEST_PG_URL` (unset). Add dedicated tests file (adjacent slots,
-  different reps, reschedule self-exclusion, cancel frees slot, buffer edge,
-  concurrent threads, rollback). Migration downgrade drops constraint+columns.
-- Status detail: IMPLEMENTED, TESTED only via existing suite (test_appointments
-  459 lines still green). Dedicated new tests NOT_STARTED.
+## Authoritative workstream status
 
-## Workstream 2 — Worker instrumentation — IMPLEMENTED (all 5 workers)
-- `backend/app/services/workers_health.py` rewritten: `WorkerHandle`
-  (stable id `type:hostname:pid`, background heartbeat thread,
-  `WORKER_HEARTBEAT_SECONDS` env default 15s, `set_job`/`job()` ctx,
-  `record_success`/`record_failure`, `shutdown`→status stopped,
-  `start()` bumps recovery_attempts), `beat/idle/success/failure/stop/start`,
-  `health()` with filters + counts (healthy/idle/degraded/stale/failed/stopped)
-  + heartbeat_age_seconds. WorkerHeartbeat model gained host/pid/started_at/
-  last_job_name/last_error (migration a1b2c3d4e5f6).
-- Workers refactored: orchestrator_worker, comms_worker, manager_worker,
-  reminder_worker, research_worker (all use `_handle()` WorkerHandle).
-- Remaining: dedicated worker tests (restart, stale, per-type) NOT_STARTED.
+| WS | Item | Status | Evidence |
+|----|------|--------|----------|
+| 1 | Appointment PG concurrency | IMPLEMENTED (live PG verify BLOCKED) | block_start/end cols, `_sync_block`, IntegrityError→409, exclusion constraint migration; needs `AGW_TEST_PG_URL` |
+| 2 | Worker instrumentation | IMPLEMENTED | WorkerHandle in all 5 workers; dedicated restart/stale tests still thin |
+| 3 | Redis diagnostics | IMPLEMENTED | real PING, fail-closed prod; dedicated tests still thin |
+| 4 | WhatsApp lifecycle | TESTED | 14 mocked tests `test_whatsapp_templates.py`; live Meta unverified |
+| 5 | Resend lifecycle | TESTED | 11 mocked tests `test_resend_lifecycle.py`; live Resend unverified |
+| 6 | Prompt-injection security | TESTED | `untrusted_block` wired in outreach/conversation_engine/manager_engine; 5 unit + 7 adversarial tests pass; `docs/SECURITY_AND_PROMPT_INJECTION.md` |
+| 7 | LLM metering + budgets | TESTED | `MeteredLLM`+`LLMInvocation`+atomic budget; `GET /analytics/llm-usage`; 8/8 `test_llm_metering.py` |
+| 8 | Frontend ops panels | TESTED | `Operations.tsx` (LLM usage, workers, WA templates, integrations); tsc/build/lint clean |
+| 9 | Documentation | TESTED | ARCHITECTURE/INTEGRATIONS/DEPLOYMENT/ENVIRONMENT_VARIABLES/TESTING/KNOWN_LIMITATIONS + SECURITY_AND_PROMPT_INJECTION + README rewritten |
+| 10 | Final verification | TESTED (locally) | pytest 158/2, alembic upgrade+check clean (new head `b2c3d4e5f6a7`), tsc/build/lint clean; PG/Redis/live-provider runs remain BLOCKED on credentials |
 
-## Workstream 3 — Redis diagnostics — IMPLEMENTED
-- `backend/app/core/ratelimit.py` rewritten: real `PING` health (5s cache),
-  `status()` returns backend/distributed/distributed_required/
-  redis_url_configured/redis_reachable/redis_checked/degraded/config_valid/
-  environment; production (`ENVIRONMENT=production` or
-  `REQUIRE_REDIS_RATE_LIMIT=1`) fails closed via `RateLimiterUnavailable`
-  (never silent memory downgrade); dev falls back to memory per-call when
-  Redis down and reports degraded. No URL/credential exposure.
-- Remaining: dedicated ratelimit tests NOT_STARTED (reachable/unreachable/
-  missing/fail-closed; mock vs live Redis distinction).
+## Per-workstream detail
 
-## Workstream 4 — WhatsApp lifecycle — PARTIAL
-- Done: `Message.provider_message_id` (+delivered_at/read_at/failed_at/
-  provider_error) persisted on send in `outreach.send_message`;
-  `whatsapp_webhooks.py` maps status events→Message with monotonic ranking
-  (sent<delivered<read, failed terminal) + provider timestamps.
-- NOT_STARTED: MetaCloudProvider.list_templates/fetch templates sync service
-  + authenticated sync endpoint; template send path w/ param+language
-  validation; outside-24h-window approved-template sending; template_status
-  webhook→MessageTemplate.provider_status sync; MessageTemplate components/
-  provider_category columns exist (migration done) but unused;
-  submission-to-Meta endpoint (manual approval workflow doc).
-- Files to touch: `app/integrations/whatsapp/meta_cloud.py`,
-  `app/integrations/whatsapp/base.py`, `app/services/outreach.py`,
-  `app/api/whatsapp_webhooks.py`, new `app/api/whatsapp.py` or extend
-  compliance/system router, `app/services/` new `whatsapp_templates.py`.
+### WS1 — Appointment concurrency — IMPLEMENTED
+- `Appointment.block_start`/`block_end` synced on create/book/reschedule;
+  occupied interval = [start−buffer, end+buffer).
+- Migration `a1b2c3d4e5f6`: columns + backfill + PG-only
+  `excl_appointment_overlap` EXCLUDE USING gist (btree_gist, tstzrange,
+  partial on blocking statuses). SQLite keeps app-level checks.
+- `IntegrityError`→409 handler in `main.py`.
+- **Blocked:** live PG concurrency needs `AGW_TEST_PG_URL`; dedicated
+  concurrency tests file not yet added.
 
-## Workstream 5 — Resend lifecycle — PARTIAL
-- Done: provider_message_id persisted on send; `api/webhooks.py` maps
-  delivered/bounced/complained/failed → Message status/timestamps +
-  SuppressionRecord on bounce/complaint; unknown IDs safe; svix signature
-  verification already existed; WebhookEvent idempotency existed.
-- NOT_STARTED: campaign/conversation status rollups on events; inbound
-  threading improvements + quarantine flag for ambiguous inbound (currently
-  returns unmatched_workspace without persisting quarantine marker);
-  duplicate inbound message guard (check provider_message_id/external_id
-  before handle_inbound); tests for all event types.
+### WS2 — Worker instrumentation — IMPLEMENTED
+- `services/workers_health.py`: `WorkerHandle` stable id `type:host:pid`,
+  background heartbeat (`WORKER_HEARTBEAT_SECONDS`), job-name-only tracking,
+  success/failure/consecutive-failure/recovery, stale detection.
+- All 5 workers (`orchestrator`, `research`, `comms`, `manager`, `reminder`)
+  refactored. `GET /system/workers*` (admin) with filters + summary.
+- **Gap:** dedicated per-worker restart/stale tests thin.
 
-## Workstream 6 — Prompt-injection security — PARTIAL (module exists, NOT WIRED)
-- `app/services/prompt_security.py` created: `sanitize_untrusted`,
-  `scan_injection` (heuristic patterns), `untrusted_block(label, content)`
-  with delimiter neutralization + 12k char cap, `UNTRUSTED_NOTICE`.
-- NOT_STARTED: apply `untrusted_block` in `outreach.generate_intro_draft`,
-  `outreach.generate_reply_draft`, `conversation_engine.analyze_inbound`,
-  `manager_engine.generate_insights`, `workflow_steps.exec_draft_reply`;
-  add `UNTRUSTED_NOTICE` to system prompts; adversarial tests; residual-risk
-  doc section.
-- Capability registry (`capabilities.py`) and pydantic output validation
-  already enforce structure; compliance re-checks already immediate pre-send.
+### WS3 — Redis diagnostics — IMPLEMENTED
+- `core/ratelimit.py`: real `PING` (5s cache), `status()` reports
+  backend/distributed/distributed_required/reachable/degraded/config_valid;
+  prod fails closed, dev falls back to memory. No URL/credential exposure.
+- **Gap:** dedicated reachable/unreachable/missing/fail-closed tests thin.
 
-## Workstream 7 — LLM metering — IMPLEMENTED (core) / PARTIAL wiring
-- `app/services/llm_metering.py`: `LLMInvocation` model (workspace_id,
-  workflow_id, step_id, agent_id, agent_slug, provider, model, status,
-  tokens_prompt/completion, duration_ms, error≤300 chars, created_at —
-  NO prompt contents); `MeteredLLM` wraps provider; `scope()` contextvar;
-  `_budget_check_and_increment` atomic `UPDATE workflows SET
-  llm_calls_used=llm_calls_used+1 WHERE llm_calls_used<max` →
-  `LLMBudgetExceeded`; failed calls recorded; own-session commit so caller
-  rollback doesn't lose the record.
-- `get_llm()` in `integrations/llm/base.py` now returns MeteredLLM always.
-- `gemini.py` captures `usageMetadata`→`last_usage`/`last_model`.
-- `workflow_steps._run` wraps executors in `llm_metering.scope(...)`.
-- `Workflow.llm_calls_used` column + migration added.
-- NOT_STARTED: `llm_metering.scope` in direct service call sites
-  (outreach.py, conversation_engine.py, manager_engine.py) so workspace_id
-  attribution is populated for non-workflow calls; LLM usage API endpoint
-  (e.g. GET /analytics/llm-usage or /system/llm-usage); metering tests
-  (success/failure/retry/concurrency/exhaustion).
+### WS4 — WhatsApp — TESTED (mocked)
+- `meta_cloud.py`: `list_templates` (cursor pagination), `get_template`,
+  `submit_template`, `_graph_get` (429/malformed handling).
+- `services/whatsapp_templates.py`: idempotent sync (name+lang+provider_id),
+  status map PENDING/APPROVED/REJECTED/PAUSED/DISABLED, approved-only
+  validated send + compliance recheck.
+- `api/whatsapp.py`: list/detail/sync(admin)/send(member+), workspace-scoped.
+- `whatsapp_webhooks.py`: template_status→MessageTemplate, monotonic rank
+  guard, quarantine unmatched.
+- `outreach.send_message(...,template_name)`: outside 24h → template_required
+  unless explicit approved template.
+- **Limitation:** live Meta unverified; no template-creation UI.
 
-## Workstream 8 — Frontend ops panels — NOT_STARTED
-- `frontend/src/pages/Workforce.tsx` exists (dark dashboard, workflows,
-  autonomy, event feed). Add panels: worker health (GET /system/workers +
-  /summary), rate-limit status (GET /system/status→rate_limit), WhatsApp
-  templates (needs WS4 endpoint), email event stats, stage history/time-in-
-  stage (needs WS5/analytics endpoint), LLM usage (needs WS7 endpoint),
-  appointment conflict surfacing (already 409→ApiError). Admin-only gating
-  via auth user role. Keep polling modest (existing 5–60s pattern).
-- `frontend/src/lib/api.ts` has `api.get/post/put` helpers + ApiError.
+### WS5 — Resend — TESTED (mocked svix)
+- `webhooks.py`: delivered/bounced/complained/failed → Message status +
+  timestamps; bounce/complaint → SuppressionRecord + needs_human +
+  `_bump_campaign_stats`; received → workspace resolve via
+  `settings.inbound_email`, ambiguous → `quarantined`, provider-id dedupe.
+- **Limitation:** In-Reply-To/References threading not implemented.
 
-## Workstream 9 — Docs — PARTIAL
-- `backend/.env.example` updated (REDIS_URL, REQUIRE_REDIS_RATE_LIMIT,
-  WORKER_HEARTBEAT_SECONDS, WHATSAPP_BUSINESS_ACCOUNT_ID/API_VERSION,
-  LLM_PROVIDER/GEMINI_*).
-- NOT_STARTED: README updates, backend setup guide, migration guide,
-  worker ops guide, WhatsApp setup guide, Resend webhook guide, LLM config
-  guide, security doc, production checklist. Create under `docs/`.
+### WS6 — Prompt security — TESTED
+- `untrusted_block`/`sanitize_untrusted`/`UNTRUSTED_NOTICE` in
+  `services/prompt_security.py`; wired into all external-content LLM paths.
+- Enforcement (RBAC, approvals, compliance) is code-level, independent of
+  prompts. `test_prompt_adversarial.py` 7/7 proves suppression/opt-out/
+  cross-workspace still enforced.
+- **Residual:** delimiters are advisory; see SECURITY_AND_PROMPT_INJECTION.md.
 
-## Workstream 10 — Final verification — PARTIAL
-- `python -m pytest tests -q`: 113 passed, 2 skipped (after workers_health
-  fix; rerun to confirm still green).
-- NOT_RUN: `alembic upgrade head`, `npx tsc -b`, `npm run build`,
-  PG-specific tests (AGW_TEST_PG_URL unset).
+### WS7 — LLM metering — TESTED
+- `llm_metering.py`: `LLMInvocation` (no prompt text), `MeteredLLM`,
+  `scope()`, atomic `llm_calls_used` budget, `LLMBudgetExceeded`.
+- `GET /analytics/llm-usage?days=N` — calls/failed/tokens/by_model/by_agent/
+  daily for caller's workspace.
+- **Limitation:** no cost estimation (no pricing data).
 
-## Known issues / notes for next session
-- `workers_health.success()` no longer sets status idle (test expects
-  "running" after beat+success) — intentional; idle set via `idle()`/handle.
-- `Message.provider_message_id` has `index=True` in model AND migration
-  creates `ix_messages_provider_id` — consistent.
-- `stage_history.py` mapper writes history with actor="system";
-  `record_manual` exists for explicit attribution — wire contextvars next.
-- `analytics.py` has no stage-history/time-in-stage endpoint yet.
-- No git commits made; all changes are working-tree only.
-- Python 3.14, SQLAlchemy 2, FastAPI; tests use SQLite file via conftest
-  (`Base.metadata.create_all`, ENVIRONMENT=test, workers disabled).
+### WS8 — Frontend — TESTED
+- `Operations.tsx`: LLM Usage, Worker Health, WhatsApp Templates,
+  Integrations panels; loading/error(403)/empty states; polling.
+- Fixed pre-existing `Campaigns.tsx` rules-of-hooks violation.
+
+### WS9 — Docs — TESTED
+- `docs/`: ARCHITECTURE, INTEGRATIONS, DEPLOYMENT, ENVIRONMENT_VARIABLES,
+  TESTING, KNOWN_LIMITATIONS, SECURITY_AND_PROMPT_INJECTION.
+- README rewritten (was stale "Phase 1").
+
+### WS10 — Final verification — TESTED (locally verifiable scope)
+- `pytest tests -q`: **158 passed, 2 skipped** (SQLite).
+- `alembic current`/`upgrade head`/`check`: head `b2c3d4e5f6a7`; `check`
+  initially flagged index-name drift (`ix_messages_provider_id` vs model's
+  `ix_messages_provider_message_id`) → fixed via new additive migration
+  `b2c3d4e5f6a7_phase8_9_index_name_alignment`; `check` now reports no drift.
+- `npx tsc -b` clean; `npm run lint` 0 errors; `npm run build` OK
+  (chunk-size warning only, pre-existing).
+- Git hygiene: `git diff --check` clean; no `.env`/`*.db`/secret files
+  tracked; 13 commits ahead of `main`, merge-base `898b0eb`.
+- **BLOCKED (infrastructure):** `AGW_TEST_PG_URL` PostgreSQL run, live
+  Redis, live Meta/Resend/LLM/Calendar smoke tests — all need real
+  credentials/infra; documented in KNOWN_LIMITATIONS.md.
+- **PR #1:** GitHub reported `mergeable:false` despite 0 commits behind;
+  local merge-base is the root commit and no conflicting paths exist —
+  discrepancy likely stale GitHub computation; left unmerged per rules.
+
+## History (condensed)
+- Remote commits `382096d`/`58179ad` wired prompt_security + workspace LLM
+  attribution before local WS6/WS7 work — preserved via rebase.
+- WS4/WS5 earlier "NOT_STARTED" sub-bullets were stale duplicates of the
+  completed work above; removed in this consolidation.
