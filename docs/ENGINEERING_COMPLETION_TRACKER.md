@@ -15,11 +15,17 @@ Pushed to origin/feat/workforce-completion; PR #1 stays open.
   wired in 3 services; verify remaining entry points (website_enricher
   output path, workflow_steps draft, research results) + adversarial tests
   coverage; residual-risk doc still needed.
-- WS7 LLM metering: core done; remote added workspace attribution wiring —
-  usage endpoint ADDED this session: GET /api/v1/analytics/llm-usage
-  (?days=1..365) returns calls/failed/tokens/by_model/by_agent/daily for
-  caller's workspace only. STILL TODO: metering unit tests (success/fail/
-  retry/concurrency/budget/exhaustion), cost-estimate config if desired.
+- WS7 LLM metering: usage endpoint added (GET /analytics/llm-usage).
+  `tests/test_llm_metering.py` CREATED (8 tests) but 5 FAILING —
+  test_successful/failed/missing-token (service-level) + 2 endpoint tests.
+  Patched to create real Workspace rows (FK on llm_invocations.workspace_id)
+  — still failing; next session must read actual traceback
+  (`pytest tests/test_llm_metering.py -x`) — likely scope()/own-session
+  commit or assertion mismatch, NOT necessarily FK anymore.
+  3 passing: budget_blocks_after_limit, concurrent_budget, auth-required.
+- WS6: untrusted_block wired in outreach/conversation_engine/manager_engine
+  (remote commits); test_prompt_security.py exists (unit-level only).
+  STILL TODO: adversarial path tests, SECURITY_AND_PROMPT_INJECTION.md.
 - WS8 frontend panels: NOT_STARTED.
 - WS9 docs: PARTIAL (.env.example only).
 - WS10 verification: pytest 143/2 OK; alembic upgrade head OK (SQLite);
